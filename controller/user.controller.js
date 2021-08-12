@@ -2,6 +2,8 @@ const User = require("../models/users.js");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
+const cryptoRandomString = require("crypto-random-string");
+const { async } = require("crypto-random-string");
 
 const transport = nodemailer.createTransport({
     host: "in-v3.mailjet.com",
@@ -10,11 +12,6 @@ const transport = nodemailer.createTransport({
         user: "7da09124e19b69b6d183438f2b434d3c",
         password: "7a4189a20a20cd3bec8ef371a389814f",
     },
-//     service: 'gmail',
-//     auth: {
-//         user: 'sonuragavan@gail.com',
-//         pass: 'Challenger!1'
-//     }
 });
 
 const userController = {
@@ -71,32 +68,32 @@ const userController = {
             const doMatch = await bcrypt.compare(password, user.password);
             if(!doMatch) return response.status(400).json({message:"Password Incorrect"});
             
-            if(doMatch){ 
-                const token = jwt.sign({_id:user._id}, "enamoragasiyam", {expiresIn:"1d"});
-                const {_id, username, email} = user
+            // if(doMatch){ 
+            //     const token = jwt.sign({_id:user._id}, "enamoragasiyam", {expiresIn:"1d"});
+            //     const {_id, username, email} = user
 
-                transport.sendMail({
-                    to: email,
-                    from: 'sonuragavan27@gmail.com',
-                    subject: `Signup Successful`,
-                    html:`
-                    <h1>Welcome, ${user.username}</h1>
-                    <h5>Sign-up Successful</h5>
-                    `,
-                });
+            //     transport.sendMail({
+            //         to: email,
+            //         from: 'sonuragavan27@gmail.com',
+            //         subject: `Signup Successful`,
+            //         html:`
+            //         <h1>Welcome, ${user.username}</h1>
+            //         <h5>Sign-up Successful</h5>
+            //         `,
+            //     });
 
 
-                console.log('outside sendmail')
+            //     console.log('outside sendmail')
                
-                response.status(200).json({
-                    mytoken: token,
-                    user: {
-                        _id,
-                        username,
-                        email,
-                    }
-                })
-            }
+            //     response.status(200).json({
+            //         mytoken: token,
+            //         user: {
+            //             _id,
+            //             username,
+            //             email,
+            //         }
+            //     })
+            // }
            
           //  return response.status(200).json({message:"Logged-In Successfully"})
 
@@ -108,6 +105,8 @@ const userController = {
     reset: async(request, response) => {
         try{
             const { email } = request.body;
+            const randomstr = cryptoRandomString({length: 6, type: 'distinguishable'});
+            console.log(randomstr);
             
             if(!email)
             return response.status(400).json({message:"Please enter your Email"});
@@ -116,41 +115,66 @@ const userController = {
             if(!user) 
             return response.status(400).json({message:"Please enter Registered email"});
             
-            // if(user) {
-            //     const token = jwt.sign({_id:user._id}, "enamoragasiyam", {expiresIn:"1d"});
-                // const options = {
-                //     expires: new Date(Date.now() + 900000),
-                //     httpOnly: false
-                // }
+            if(user) {
+                const token = jwt.sign({_id:user._id}, "enamoragasiyam", {expiresIn:"1d"});
+                const options = {
+                    expires: new Date(Date.now() + 900000),
+                    httpOnly: false
+                }
 
-                // response.cookie('jwt-token',token,options);
+                response.cookie('jwt-token',token,options);
 
-                // transport.sendMail({
-                //     to: user.email,
-                //     from: 'sonuragavan27@gmail.com',
-                //     subject: `Signup Successful`,
-                //     html:`
-                //     <h1>Welcome, ${user.username}</h1>
-                //     <h5>Sign-up Successful</h5>
-                //     `,
-                // });
+                transport.sendMail({
+                    to: user.email,
+                    from: 'sonuragavan27@gmail.com',
+                    subject: `Signup Successful`,
+                    html:`
+                    <h1>Welcome, ${user.username}</h1>
+                    <p>Please click on the given link and enter the Secret Key</p>
+                    <a href="http://localhost/auth/resetval"></a>
+                    <h5>You're Secret Key is ${randomstr}</h5>
+                    `,
+                });
 
-                // console.log('outside sendmail')
-                // const {_id, username, email} = user
-                // response.status(200).json({
-                //     mytoken: token,
-                //     user: {
-                //         _id,
-                //         username,
-                //         email,
-                //     }
-                // })
-            // }
+                user.secretkey = randomstr;
+
+                console.log('outside sendmail')
+                const {_id, username, email} = user
+                response.status(200).json({
+                    mytoken: token,
+                    user: {
+                        _id,
+                        username,
+                        email,
+                    }
+                })
+            }
             return response.status(200).json({message:"Password reset link will be sent to your email"});    
             
-
         } catch(error) {
             return response.status(400).json({message:error.message})
+        }
+    },
+
+    resetval: async(request, response) => {
+        try{
+            const { secretkey } = request.body;
+
+            if(!secretkey){
+                return response.status(400).json({message:"Please enter secret key sent to your email"});
+            }
+
+            const match = await User.findOne({secretkey});
+            if(!match){
+                return response.status(400).json({message:"secret key does not match, Please enter valid secret key"});
+            }
+
+            if(match){
+                return response.status(200).json({messge:"secret key matches"});
+            }
+
+        } catch(error){
+            return response.status(400).json({message:error.message});
         }
     },
 
@@ -170,7 +194,7 @@ const userController = {
             if(password != confirmpassword)
                 return response.status(403).json({message:"Password doesn't match, Please enter the password properly"})
              
-
+            if(user){ 
             const hashpass =  await bcrypt.hash(password, 10);
             const saveUser = new User({
                 password: hashpass,
@@ -178,6 +202,7 @@ const userController = {
 
             await saveUser.save()
             return response.status(200).json(saveUser)
+        }
            
         } catch (error) {
             return response.status(404).json({messge:error.message});
